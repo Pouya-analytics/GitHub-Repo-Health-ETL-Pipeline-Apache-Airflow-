@@ -1,3 +1,72 @@
+# GitHub Repo Health ETL Pipeline (Apache Airflow)
+
+I built this to show ETL architecture, not just a script that pulls
+data. A script that calls an API and writes a CSV is one thing. A
+pipeline with separated retryable stages, validation that stops bad
+data before it lands, and a quality check that tells you exactly what
+failed — that's different.
+
+---
+
+## Architecture
+
+```
+extract → validate → transform → load → quality_check
+```
+
+Each stage is a separate Airflow task. When something fails, you know
+exactly where and why. The load is idempotent — retrying never creates
+duplicates. The quality check is separate from the load so a data
+problem doesn't look like a code problem.
+
+---
+
+## It actually ran
+
+Full DAG executed against the live GitHub API:
+
+```
+Dag run in success state
+start: 2026-06-26 00:00:00  end: 2026-06-26 17:33:41
+```
+
+Real data loaded that day:
+
+| repo | stars | forks | stars_per_day |
+|---|---|---|---|
+| apache/superset | 73,512 | 17,716 | 18.42 |
+| scikit-learn | 66,492 | 27,117 | 11.48 |
+| pandas | 49,090 | 20,041 | 8.49 |
+| apache/airflow | 45,940 | 17,300 | 11.23 |
+| duckdb | 39,049 | 3,365 | 13.36 |
+
+I also hit GitHub's rate limit mid-build. Rather than hide it, the
+retry/backoff fires 3 times with real delays (2s, 4s, 8s) against the
+actual failing API, then degrades gracefully:
+
+```
+retry 1/3 in 2.0s... retry 2/3 in 4.0s... retry 3/3 in 8.0s...
+VALIDATE -- 5/5 passed
+LOAD -- 5 rows upserted
+QUALITY CHECK -- passed
+```
+
+---
+
+## How to run it
+
+```bash
+pip install -r requirements.txt
+python scripts/run_pipeline_standalone.py
+python -m pytest tests/test_etl_logic.py -v
+airflow dags test github_repo_health_etl $(date +%Y-%m-%d)
+```
+
+---
+
+## Stack
+
+Airflow 3.2 · TaskFlow API · Python stdlib only · pytest · SQLite
 # Cookie Cats A/B Test — Statistics From Scratch
 
 I built this because calling scipy.stats.ttest_ind() proves nothing
